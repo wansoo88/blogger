@@ -1,0 +1,324 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:../data/app.db"
+}
+
+enum Country {
+  US
+  UK
+  CA
+  AU
+  SG
+}
+
+enum Category {
+  AI_PRODUCTIVITY
+  MONEY_SAVING
+  DIGITAL_HOWTO
+  TIME_MANAGEMENT
+  HOME_ORGANIZATION
+  WORK_TIPS
+  SYSTEM_PAGE
+}
+
+enum KeywordStatus {
+  IDEA
+  QUEUED
+  ASSIGNED
+  DRAFTED
+  DROPPED
+}
+
+enum PostStatus {
+  IDEA
+  QUEUED
+  DRAFTED
+  REVIEW
+  APPROVED
+  SCHEDULED
+  PUBLISHED
+  REFRESH
+  ARCHIVED
+}
+
+enum PublishJobStatus {
+  PENDING
+  PROCESSING
+  SUCCESS
+  FAILED
+  CANCELED
+}
+
+enum AlertSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+enum AlertStatus {
+  OPEN
+  ACKNOWLEDGED
+  RESOLVED
+}
+
+enum AlertType {
+  WEEKLY_DRAFT_SHORTFALL
+  WEEKLY_APPROVAL_SHORTFALL
+  WEEKLY_PUBLISH_SHORTFALL
+  CATEGORY_IMBALANCE
+  QUALITY_FAILURE
+  INDEXING_DELAY
+  ZERO_IMPRESSIONS
+  ZERO_CLICKS
+  PUBLISH_FAILURE
+}
+
+enum NotificationChannelType {
+  EMAIL
+}
+
+enum NotificationEvent {
+  WEEKLY_DRAFT_SHORTFALL
+  WEEKLY_APPROVAL_SHORTFALL
+  WEEKLY_PUBLISH_SHORTFALL
+  DAILY_SUMMARY
+  WEEKLY_SUMMARY
+  PUBLISH_FAILURE
+  INDEXING_DELAY
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+  SKIPPED
+}
+
+enum ReviewDecision {
+  APPROVE
+  REJECT
+  NEEDS_REVISION
+}
+
+model Keyword {
+  id            String        @id @default(cuid())
+  keyword       String
+  category      Category
+  country       Country
+  intent        String
+  priority      Int           @default(3)
+  status        KeywordStatus @default(IDEA)
+  notes         String?
+  source        String?
+  assignedWeek  Int?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  posts         Post[]
+  assignments   WeeklyAssignment[]
+
+  @@index([status, priority])
+  @@index([category, country])
+}
+
+model Post {
+  id                 String      @id @default(cuid())
+  keywordId          String?
+  title              String
+  slug               String      @unique
+  category           Category
+  status             PostStatus  @default(IDEA)
+  targetCountry      Country     @default(US)
+  assignedWeek       Int?
+  targetPublishDate  DateTime?
+  draftMarkdown      String?
+  finalHtml          String?
+  wordCount          Int         @default(0)
+  faqCount           Int         @default(0)
+  internalLinkCount  Int         @default(0)
+  hasRealExample     Boolean     @default(false)
+  aiScore            Int?
+  reviewNotes        String?
+  approvedAt         DateTime?
+  publishedAt        DateTime?
+  bloggerPostId      String?
+  bloggerUrl         String?
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+
+  keyword            Keyword?    @relation(fields: [keywordId], references: [id], onDelete: SetNull)
+  publishJobs        PublishJob[]
+  metricSnapshots    MetricsSnapshot[]
+  reviewLogs         ReviewLog[]
+  alerts             Alert[]
+  assignments        WeeklyAssignment[]
+
+  @@index([status, assignedWeek])
+  @@index([category, status])
+}
+
+model PublishJob {
+  id            String           @id @default(cuid())
+  postId         String
+  scheduledFor   DateTime
+  status         PublishJobStatus @default(PENDING)
+  attemptCount   Int              @default(0)
+  lastError      String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  post           Post             @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([status, scheduledFor])
+}
+
+model MetricsSnapshot {
+  id            String    @id @default(cuid())
+  postId         String
+  capturedAt     DateTime @default(now())
+  indexed        Boolean  @default(false)
+  impressions    Int      @default(0)
+  clicks         Int      @default(0)
+  ctr            Float    @default(0)
+  position       Float?
+
+  post           Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId, capturedAt])
+}
+
+model WeeklyQuota {
+  id               String             @id @default(cuid())
+  isoWeek          String             @unique
+  startDate        DateTime
+  endDate          DateTime
+  targetDrafts     Int                @default(8)
+  targetReviews    Int                @default(6)
+  targetPublishes  Int                @default(5)
+  targetPages      Int                @default(0)
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  assignments      WeeklyAssignment[]
+  stats            WeeklyStat?
+  alerts           Alert[]
+}
+
+model WeeklyAssignment {
+  id            String      @id @default(cuid())
+  weeklyQuotaId String
+  postId        String?
+  keywordId     String?
+  taskType      String
+  status        String      @default("queued")
+  owner         String?     @default("human")
+  dueDate       DateTime?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  weeklyQuota   WeeklyQuota @relation(fields: [weeklyQuotaId], references: [id], onDelete: Cascade)
+  post          Post?       @relation(fields: [postId], references: [id], onDelete: SetNull)
+  keyword       Keyword?    @relation(fields: [keywordId], references: [id], onDelete: SetNull)
+
+  @@index([weeklyQuotaId, status])
+}
+
+model WeeklyStat {
+  id                String      @id @default(cuid())
+  weeklyQuotaId      String      @unique
+  draftCount         Int         @default(0)
+  reviewCount        Int         @default(0)
+  approvedCount      Int         @default(0)
+  publishedCount     Int         @default(0)
+  pageCount          Int         @default(0)
+  missingDrafts      Int         @default(0)
+  missingPublishes   Int         @default(0)
+  categoryBreakdown  String?
+  lastCalculatedAt   DateTime    @default(now())
+
+  weeklyQuota        WeeklyQuota @relation(fields: [weeklyQuotaId], references: [id], onDelete: Cascade)
+}
+
+model Alert {
+  id              String         @id @default(cuid())
+  type            AlertType
+  severity        AlertSeverity
+  status          AlertStatus    @default(OPEN)
+  message         String
+  postId          String?
+  weeklyQuotaId   String?
+  createdAt       DateTime       @default(now())
+  resolvedAt      DateTime?
+
+  post            Post?          @relation(fields: [postId], references: [id], onDelete: SetNull)
+  weeklyQuota     WeeklyQuota?   @relation(fields: [weeklyQuotaId], references: [id], onDelete: SetNull)
+  notifications   NotificationLog[]
+
+  @@index([status, severity, createdAt])
+}
+
+model NotificationChannel {
+  id             String                  @id @default(cuid())
+  type           NotificationChannelType
+  target         String
+  isEnabled      Boolean                 @default(true)
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
+
+  rules          NotificationRule[]
+  logs           NotificationLog[]
+
+  @@unique([type, target])
+}
+
+model NotificationRule {
+  id                    String              @id @default(cuid())
+  channelId             String
+  event                 NotificationEvent
+  isEnabled             Boolean             @default(true)
+  sendImmediately       Boolean             @default(true)
+  dailyDigestHour       Int?
+  weeklyDigestIsoDay    Int?
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+
+  channel               NotificationChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@unique([channelId, event])
+}
+
+model NotificationLog {
+  id            String              @id @default(cuid())
+  channelId      String
+  alertId        String?
+  event          NotificationEvent
+  subject        String
+  body           String
+  status         NotificationStatus @default(PENDING)
+  sentAt         DateTime?
+  errorMessage   String?
+  createdAt      DateTime           @default(now())
+
+  channel        NotificationChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  alert          Alert?              @relation(fields: [alertId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+}
+
+model ReviewLog {
+  id            String         @id @default(cuid())
+  postId         String
+  decision       ReviewDecision
+  reviewer       String        @default("kimcomplete8888@gmail.com")
+  checklistJson  String?
+  notes          String?
+  createdAt      DateTime      @default(now())
+
+  post           Post          @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId, createdAt])
+}
