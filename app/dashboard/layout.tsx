@@ -2,13 +2,14 @@ import Link from "next/link";
 
 const links = [
   { href: "/dashboard", label: "Overview" },
+  { href: "/dashboard/progress", label: "Progress" },
   { href: "/dashboard/keywords", label: "Keywords" },
   { href: "/dashboard/pipeline", label: "Pipeline" },
   { href: "/dashboard/review", label: "Review" },
   { href: "/dashboard/publish", label: "Publish" },
   { href: "/dashboard/notifications", label: "Alerts" },
   { href: "/dashboard/settings", label: "Settings" },
-  { href: "/guide", label: "Guide" },
+  { href: "/dashboard/playbook", label: "Playbook" },
 ];
 
 export default function DashboardLayout({
