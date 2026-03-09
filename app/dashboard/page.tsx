@@ -1,48 +1,66 @@
-import Link from "next/link";
-import { getDashboardSummary } from "@/lib/services/dashboard-service";
-import { getPrimaryNotificationChannel } from "@/lib/services/notification-service";
-import { listPostsByStatus } from "@/lib/services/post-service";
+import Link from 'next/link'
+import { getDashboardSummary } from '@/lib/services/dashboard-service'
+import { getPrimaryNotificationChannel } from '@/lib/services/notification-service'
+import { listPostsByStatus } from '@/lib/services/post-service'
+import { db } from '@/lib/db'
 
 function StatusBadge({ value }: { value: string }) {
   const className =
-    value === "FAILED" || value === "CRITICAL"
-      ? "badge badge-danger"
-      : "badge badge-warn";
+    value === 'FAILED' || value === 'CRITICAL'
+      ? 'badge badge-danger'
+      : 'badge badge-warn'
 
-  return <span className={className}>{value}</span>;
+  return <span className={className}>{value}</span>
 }
 
 export default async function DashboardPage() {
-  const summary = await getDashboardSummary();
-  const channel = await getPrimaryNotificationChannel();
-  const posts = await listPostsByStatus();
-  const reviewCount = posts.filter((post) => post.status === "REVIEW").length;
-  const queuedCount = posts.filter((post) => post.status === "QUEUED").length;
-  const approvedCount = posts.filter((post) => post.status === "APPROVED").length;
-  const scheduledCount = posts.filter((post) => post.status === "SCHEDULED").length;
+  const summary = await getDashboardSummary()
+  const channel = await getPrimaryNotificationChannel()
+  const posts = await listPostsByStatus()
+  const reviewCount = posts.filter((post) => post.status === 'REVIEW').length
+  const queuedCount = posts.filter((post) => post.status === 'QUEUED').length
+  const approvedCount = posts.filter((post) => post.status === 'APPROVED').length
+  const scheduledCount = posts.filter((post) => post.status === 'SCHEDULED').length
+  const publishedCount = posts.filter((post) => post.status === 'PUBLISHED').length
+
+  const avgScore = await db.post.aggregate({
+    _avg: { aiScore: true },
+    where: { aiScore: { not: null } },
+  })
+
+  const adsenseReady = publishedCount >= 30
+  const adsenseProgress = Math.min(100, Math.round((publishedCount / 30) * 100))
 
   return (
     <div className="grid" style={{ gap: 24 }}>
       <section className="grid grid-2 grid-4">
         <article className="panel accent-panel">
+          <p className="label">AdSense readiness</p>
+          <div className="metric">{publishedCount} / 30</div>
+          <p>{adsenseReady ? 'Ready to apply for AdSense.' : `${30 - publishedCount} more posts needed.`}</p>
+          <div style={{
+            height: 6, borderRadius: 3, background: 'rgba(255,255,255,0.2)', marginTop: 8,
+          }}>
+            <div style={{
+              height: '100%', width: `${adsenseProgress}%`, borderRadius: 3,
+              background: 'rgba(255,255,255,0.8)',
+            }} />
+          </div>
+        </article>
+        <article className="panel">
+          <p className="label">Quality score</p>
+          <div className="metric">{Math.round(avgScore._avg.aiScore ?? 0)}</div>
+          <p>Average across all scored posts</p>
+        </article>
+        <article className="panel">
           <p className="label">Review queue</p>
           <div className="metric">{reviewCount}</div>
-          <p>Posts waiting for final human review.</p>
+          <p>Posts needing manual review</p>
         </article>
         <article className="panel">
-          <p className="label">Queued drafts</p>
-          <div className="metric">{queuedCount}</div>
-          <p>Posts ready for Gemini draft generation.</p>
-        </article>
-        <article className="panel">
-          <p className="label">Approved posts</p>
-          <div className="metric">{approvedCount}</div>
-          <p>Ready to schedule for Blogger publishing.</p>
-        </article>
-        <article className="panel">
-          <p className="label">Scheduled posts</p>
-          <div className="metric">{scheduledCount}</div>
-          <p>Tracked publish jobs in the local pipeline.</p>
+          <p className="label">Ready to publish</p>
+          <div className="metric">{approvedCount + scheduledCount}</div>
+          <p>{approvedCount} approved, {scheduledCount} scheduled</p>
         </article>
       </section>
 
@@ -59,7 +77,7 @@ export default async function DashboardPage() {
             <div className="metric">
               {summary.draftActual} / {summary.draftTarget}
             </div>
-            <p>Missing drafts: {summary.missingDrafts}</p>
+            <p>Missing: {summary.missingDrafts}</p>
           </article>
 
           <article className="panel">
@@ -67,7 +85,7 @@ export default async function DashboardPage() {
             <div className="metric">
               {summary.reviewActual} / {summary.reviewTarget}
             </div>
-            <p>Human review remains the release gate.</p>
+            <p>Queued for generation: {queuedCount}</p>
           </article>
 
           <article className="panel">
@@ -75,7 +93,7 @@ export default async function DashboardPage() {
             <div className="metric">
               {summary.publishActual} / {summary.publishTarget}
             </div>
-            <p>Missing publishes: {summary.missingPublishes}</p>
+            <p>Missing: {summary.missingPublishes}</p>
           </article>
         </section>
 
@@ -83,20 +101,19 @@ export default async function DashboardPage() {
           <article className="panel">
             <p className="label">Alert email</p>
             <div className="metric" style={{ fontSize: 20 }}>
-              {channel?.target ?? "kimcomplete8888@gmail.com"}
+              {channel?.target ?? 'kimcomplete8888@gmail.com'}
             </div>
             <p>
-              Last notification status:{" "}
-              <StatusBadge value={summary.lastNotificationStatus} />
+              Last status: <StatusBadge value={summary.lastNotificationStatus} />
             </p>
-            <p>Mailer configured: {process.env.SMTP_HOST ? "yes" : "no"}</p>
+            <p>Mailer: {process.env.SMTP_HOST ? 'configured' : 'not set'}</p>
           </article>
 
           <article className="panel">
-            <p className="label">Enabled notification rules</p>
+            <p className="label">Notification rules</p>
             <ul className="list">
               {channel?.rules.map((rule) => (
-                <li key={rule.id}>{rule.event}</li>
+                <li key={rule.id}>{rule.event.replace(/_/g, ' ').toLowerCase()}</li>
               )) ?? <li>No rules configured</li>}
             </ul>
           </article>
@@ -105,36 +122,39 @@ export default async function DashboardPage() {
 
       <section className="grid grid-2">
         <article className="panel">
-          <p className="label">Workflow links</p>
+          <p className="label">Quick actions</p>
           <div className="actions">
             <Link className="button-link primary" href="/dashboard/keywords">
-              Manage keywords
+              Keywords
             </Link>
             <Link className="button-link" href="/dashboard/pipeline">
-              Open pipeline
+              Pipeline
             </Link>
             <Link className="button-link" href="/dashboard/review">
-              Review drafts
+              Review
             </Link>
             <Link className="button-link" href="/dashboard/publish">
-              Publish queue
+              Publish
             </Link>
-            <Link className="button-link" href="/dashboard/settings">
-              Settings
+            <Link className="button-link" href="/dashboard/progress">
+              Progress
+            </Link>
+            <Link className="button-link" href="/dashboard/monitor">
+              Monitor
             </Link>
           </div>
         </article>
 
         <article className="panel">
-          <p className="label">Notification runbook</p>
+          <p className="label">Getting started</p>
           <ul className="list">
-            <li>`POST /api/quotas/evaluate` recalculates weekly shortfalls.</li>
-            <li>`POST /api/notifications/process` sends pending emails.</li>
-            <li>Gemini draft generation requires `GEMINI_API_KEY`.</li>
-            <li>SMTP delivery requires all SMTP variables in `.env.local`.</li>
+            <li>Set GEMINI_API_KEY in .env.local for draft generation.</li>
+            <li>Set Blogger credentials for publishing.</li>
+            <li>Add keywords and generate drafts from the Pipeline page.</li>
+            <li>See the <Link href="/dashboard/playbook" style={{ textDecoration: 'underline' }}>Playbook</Link> for full setup guide.</li>
           </ul>
         </article>
       </section>
     </div>
-  );
+  )
 }
