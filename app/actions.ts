@@ -15,6 +15,8 @@ import { evaluateWeeklyQuota } from '@/lib/services/quota-service'
 import { autoScheduleApprovedPosts } from '@/lib/services/scheduler-service'
 import { createBloggerPage, REQUIRED_PAGES } from '@/lib/integrations/blogger'
 import { syncMetricsForPublishedPosts } from '@/lib/integrations/search-console'
+import { evaluateAllAlerts } from '@/lib/services/alert-service'
+import { getTrafficSummary, getTrafficBySource, getTopPages } from '@/lib/integrations/ga4'
 
 export async function createKeywordAction(formData: FormData) {
   const keyword = String(formData.get('keyword') ?? '').trim()
@@ -126,4 +128,18 @@ export async function createRequiredPagesAction(formData: FormData) {
 export async function syncMetricsAction() {
   await syncMetricsForPublishedPosts()
   await touchPaths()
+}
+
+export async function evaluateAlertsAction() {
+  await evaluateAllAlerts()
+  await touchPaths()
+}
+
+export async function syncGA4Action() {
+  const [summary, sources, pages] = await Promise.all([
+    getTrafficSummary(),
+    getTrafficBySource(),
+    getTopPages(),
+  ])
+  return { summary, sources, pages }
 }
