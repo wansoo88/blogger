@@ -1,11 +1,89 @@
 import { getPostMetricsSummary } from '@/lib/integrations/search-console'
-import { syncMetricsAction } from '@/app/actions'
+import { getGA4Status, getTrafficSummary, getTrafficBySource } from '@/lib/integrations/ga4'
+import { syncMetricsAction, evaluateAlertsAction } from '@/app/actions'
+import { db } from '@/lib/db'
 
 export default async function MonitorPage() {
   const summary = await getPostMetricsSummary()
+  const ga4Status = getGA4Status()
+  const traffic = ga4Status.configured ? await getTrafficSummary() : null
+  const sources = ga4Status.configured ? await getTrafficBySource() : null
+  const openAlerts = await db.alert.count({ where: { status: 'OPEN' } })
 
   return (
     <div className="section-stack">
+      <section className="panel">
+        <div className="topbar">
+          <p className="label">Health check</p>
+          <form action={evaluateAlertsAction}>
+            <button className="button-link primary" type="submit">
+              Run alert evaluation
+            </button>
+          </form>
+        </div>
+        <p className="small-note">
+          {openAlerts > 0
+            ? `${openAlerts} open alert(s). Check the Alerts page for details.`
+            : 'No open alerts.'}
+        </p>
+      </section>
+
+      {traffic ? (
+        <section className="grid grid-2 grid-4">
+          <article className="panel accent-panel">
+            <p className="label">Sessions (28d)</p>
+            <div className="metric">{traffic.sessions.toLocaleString()}</div>
+            <p>Users: {traffic.users.toLocaleString()}</p>
+          </article>
+          <article className="panel">
+            <p className="label">Page Views (28d)</p>
+            <div className="metric">{traffic.pageViews.toLocaleString()}</div>
+            <p>New users: {traffic.newUsers.toLocaleString()}</p>
+          </article>
+          <article className="panel">
+            <p className="label">Bounce Rate</p>
+            <div className="metric">{traffic.bounceRate}%</div>
+          </article>
+          <article className="panel">
+            <p className="label">Avg Session</p>
+            <div className="metric">{Math.round(traffic.avgSessionDuration)}s</div>
+          </article>
+        </section>
+      ) : (
+        <section className="panel">
+          <p className="label">Google Analytics 4</p>
+          <p className="small-note">
+            GA4 not configured. Add GA4_PROPERTY_ID and GA4_REFRESH_TOKEN to .env.local to enable traffic monitoring.
+          </p>
+        </section>
+      )}
+
+      {sources && sources.length > 0 ? (
+        <section className="panel">
+          <p className="label">Traffic sources (28d)</p>
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr><th>Source</th><th>Sessions</th><th>Share</th></tr>
+              </thead>
+              <tbody>
+                {sources.map(s => {
+                  const total = sources.reduce((sum, x) => sum + x.sessions, 0)
+                  const pct = total > 0 ? ((s.sessions / total) * 100).toFixed(1) : '0'
+                  return (
+                    <tr key={s.source}>
+                      <td>{s.source}</td>
+                      <td>{s.sessions.toLocaleString()}</td>
+                      <td>{pct}%</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ) : null}
+
       <section className="grid grid-2 grid-4">
         <article className="panel accent-panel">
           <p className="label">Published</p>

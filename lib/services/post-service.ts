@@ -112,7 +112,7 @@ export async function generateDraftForPost(postId: string) {
     country: post.targetCountry,
   })
 
-  const qualityResult = runQualityCheck(post.title, result.draft)
+  const qualityResult = runQualityCheck(post.title, result.draft, post.keyword.keyword)
 
   const faqCount = (result.draft.match(/\?\s*$/gm) || []).length
 
