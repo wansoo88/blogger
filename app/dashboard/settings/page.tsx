@@ -1,5 +1,6 @@
 import { getMailerStatus } from '@/lib/integrations/mailer'
 import { getSearchConsoleStatus } from '@/lib/integrations/search-console'
+import { getGA4Status } from '@/lib/integrations/ga4'
 
 function settingRow(label: string, configured: boolean, value?: string | null) {
   return (
@@ -19,6 +20,7 @@ function settingRow(label: string, configured: boolean, value?: string | null) {
 export default function SettingsPage() {
   const mailer = getMailerStatus()
   const searchConsole = getSearchConsoleStatus()
+  const ga4 = getGA4Status()
   const geminiConfigured = Boolean(process.env.GEMINI_API_KEY)
   const bloggerBlogConfigured = Boolean(process.env.BLOGGER_BLOG_ID)
   const refreshTokenConfigured = Boolean(process.env.BLOGGER_REFRESH_TOKEN)
@@ -82,6 +84,27 @@ export default function SettingsPage() {
           {searchConsole.configured
             ? 'Search Console configured. Use Monitor page to sync metrics.'
             : 'Add SEARCH_CONSOLE_SITE_URL to .env.local to enable metrics sync.'}
+        </p>
+      </section>
+
+      <section className="panel">
+        <p className="label">Google Analytics 4</p>
+        <div className="table-wrap">
+          <table className="table">
+            <thead>
+              <tr><th>Setting</th><th>Status</th><th>Value</th></tr>
+            </thead>
+            <tbody>
+              {settingRow('GA4_PROPERTY_ID', Boolean(ga4.propertyId), ga4.propertyId)}
+              {settingRow('GA4_REFRESH_TOKEN', ga4.hasRefreshToken, ga4.hasRefreshToken ? 'set' : null)}
+              {settingRow('OAuth credentials', ga4.hasClientCredentials, ga4.hasClientCredentials ? 'set' : null)}
+            </tbody>
+          </table>
+        </div>
+        <p className="small-note" style={{ marginTop: 12 }}>
+          {ga4.configured
+            ? 'GA4 configured. Traffic data will appear on the Monitor page.'
+            : 'Add GA4_PROPERTY_ID and GA4_REFRESH_TOKEN to .env.local for traffic monitoring.'}
         </p>
       </section>
 
