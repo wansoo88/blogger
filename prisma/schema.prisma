@@ -75,6 +75,9 @@ enum AlertType {
   ZERO_IMPRESSIONS
   ZERO_CLICKS
   PUBLISH_FAILURE
+  REVENUE_DROP
+  LOW_RPM_POST
+  REFRESH_CANDIDATE
 }
 
 enum NotificationChannelType {
@@ -105,221 +108,288 @@ enum ReviewDecision {
 }
 
 model Keyword {
-  id            String        @id @default(cuid())
-  keyword       String
-  category      Category
-  country       Country
-  intent        String
-  priority      Int           @default(3)
-  status        KeywordStatus @default(IDEA)
-  notes         String?
-  source        String?
-  assignedWeek  Int?
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  id               String        @id @default(cuid())
+  keyword          String
+  category         Category
+  country          Country
+  intent           String
+  priority         Int           @default(3)
+  status           KeywordStatus @default(IDEA)
+  notes            String?
+  source           String?
+  assignedWeek     Int?
+  estimatedCpc     Float?
+  competitionScore Float?
+  estimatedVolume  Int?
+  revenueScore     Float?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
 
-  posts         Post[]
-  assignments   WeeklyAssignment[]
+  posts       Post[]
+  assignments WeeklyAssignment[]
 
   @@index([status, priority])
   @@index([category, country])
+  @@index([revenueScore])
 }
 
 model Post {
-  id                 String      @id @default(cuid())
-  keywordId          String?
-  title              String
-  slug               String      @unique
-  category           Category
-  status             PostStatus  @default(IDEA)
-  targetCountry      Country     @default(US)
-  assignedWeek       Int?
-  targetPublishDate  DateTime?
-  draftMarkdown      String?
-  finalHtml          String?
-  wordCount          Int         @default(0)
-  faqCount           Int         @default(0)
-  internalLinkCount  Int         @default(0)
-  hasRealExample     Boolean     @default(false)
-  aiScore            Int?
-  reviewNotes        String?
-  approvedAt         DateTime?
-  publishedAt        DateTime?
-  bloggerPostId      String?
-  bloggerUrl         String?
-  metaDescription    String?
-  createdAt          DateTime    @default(now())
-  updatedAt          DateTime    @updatedAt
+  id                  String     @id @default(cuid())
+  keywordId           String?
+  title               String
+  slug                String     @unique
+  category            Category
+  status              PostStatus @default(IDEA)
+  targetCountry       Country    @default(US)
+  assignedWeek        Int?
+  targetPublishDate   DateTime?
+  draftMarkdown       String?
+  finalHtml           String?
+  wordCount           Int        @default(0)
+  faqCount            Int        @default(0)
+  internalLinkCount   Int        @default(0)
+  hasRealExample      Boolean    @default(false)
+  aiScore             Int?
+  reviewNotes         String?
+  approvedAt          DateTime?
+  publishedAt         DateTime?
+  bloggerPostId       String?
+  bloggerUrl          String?
+  metaDescription     String?
+  totalRevenue        Float      @default(0)
+  lifetimeImpressions Int        @default(0)
+  lifetimeClicks      Int        @default(0)
+  lastRevenueAt       DateTime?
+  refreshScore        Float?
+  needsRefresh        Boolean    @default(false)
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
 
-  keyword            Keyword?    @relation(fields: [keywordId], references: [id], onDelete: SetNull)
-  publishJobs        PublishJob[]
-  metricSnapshots    MetricsSnapshot[]
-  reviewLogs         ReviewLog[]
-  alerts             Alert[]
-  assignments        WeeklyAssignment[]
+  keyword         Keyword?           @relation(fields: [keywordId], references: [id], onDelete: SetNull)
+  publishJobs     PublishJob[]
+  metricSnapshots MetricsSnapshot[]
+  reviewLogs      ReviewLog[]
+  alerts          Alert[]
+  assignments     WeeklyAssignment[]
+  affiliateLinks  AffiliateLink[]
+  affiliateClicks AffiliateClick[]
 
   @@index([status, assignedWeek])
   @@index([category, status])
 }
 
 model PublishJob {
-  id            String           @id @default(cuid())
-  postId         String
-  scheduledFor   DateTime
-  status         PublishJobStatus @default(PENDING)
-  attemptCount   Int              @default(0)
-  lastError      String?
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
+  id           String           @id @default(cuid())
+  postId       String
+  scheduledFor DateTime
+  status       PublishJobStatus @default(PENDING)
+  attemptCount Int              @default(0)
+  lastError    String?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
 
-  post           Post             @relation(fields: [postId], references: [id], onDelete: Cascade)
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
 
   @@index([status, scheduledFor])
 }
 
 model MetricsSnapshot {
   id            String    @id @default(cuid())
-  postId         String
-  capturedAt     DateTime @default(now())
-  indexed        Boolean  @default(false)
-  impressions    Int      @default(0)
-  clicks         Int      @default(0)
-  ctr            Float    @default(0)
-  position       Float?
+  postId        String
+  capturedAt    DateTime  @default(now())
+  indexed       Boolean   @default(false)
+  impressions   Int       @default(0)
+  clicks        Int       @default(0)
+  ctr           Float     @default(0)
+  position      Float?
+  adImpressions Int       @default(0)
+  adClicks      Int       @default(0)
+  adCtr         Float     @default(0)
+  revenue       Float     @default(0)
+  rpm           Float     @default(0)
+  ecpm          Float     @default(0)
+  pageRpm       Float     @default(0)
+  periodStart   DateTime?
+  periodEnd     DateTime?
+  source        String?
 
-  post           Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
 
   @@index([postId, capturedAt])
+  @@index([revenue])
+}
+
+model AffiliateLink {
+  id              String   @id @default(cuid())
+  postId          String?
+  label           String
+  merchant        String
+  targetUrl       String
+  trackingSlug    String   @unique
+  category        Category
+  commissionRate  Float?
+  expectedPayout  Float?
+  isActive        Boolean  @default(true)
+  clickCount      Int      @default(0)
+  conversionCount Int      @default(0)
+  totalRevenue    Float    @default(0)
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  post   Post?            @relation(fields: [postId], references: [id], onDelete: SetNull)
+  clicks AffiliateClick[]
+
+  @@index([postId, isActive])
+  @@index([category])
+}
+
+model AffiliateClick {
+  id              String   @id @default(cuid())
+  affiliateLinkId String
+  postId          String?
+  clickedAt       DateTime @default(now())
+  referer         String?
+  userAgent       String?
+  country         String?
+  converted       Boolean  @default(false)
+  payout          Float?
+
+  affiliateLink AffiliateLink @relation(fields: [affiliateLinkId], references: [id], onDelete: Cascade)
+  post          Post?         @relation(fields: [postId], references: [id], onDelete: SetNull)
+
+  @@index([affiliateLinkId, clickedAt])
+  @@index([postId])
 }
 
 model WeeklyQuota {
-  id               String             @id @default(cuid())
-  isoWeek          String             @unique
-  startDate        DateTime
-  endDate          DateTime
-  targetDrafts     Int                @default(8)
-  targetReviews    Int                @default(6)
-  targetPublishes  Int                @default(5)
-  targetPages      Int                @default(0)
-  createdAt        DateTime           @default(now())
-  updatedAt        DateTime           @updatedAt
+  id              String   @id @default(cuid())
+  isoWeek         String   @unique
+  startDate       DateTime
+  endDate         DateTime
+  targetDrafts    Int      @default(8)
+  targetReviews   Int      @default(6)
+  targetPublishes Int      @default(5)
+  targetPages     Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  assignments      WeeklyAssignment[]
-  stats            WeeklyStat?
-  alerts           Alert[]
+  assignments WeeklyAssignment[]
+  stats       WeeklyStat?
+  alerts      Alert[]
 }
 
 model WeeklyAssignment {
-  id            String      @id @default(cuid())
+  id            String    @id @default(cuid())
   weeklyQuotaId String
   postId        String?
   keywordId     String?
   taskType      String
-  status        String      @default("queued")
-  owner         String?     @default("human")
+  status        String    @default("queued")
+  owner         String?   @default("human")
   dueDate       DateTime?
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
-  weeklyQuota   WeeklyQuota @relation(fields: [weeklyQuotaId], references: [id], onDelete: Cascade)
-  post          Post?       @relation(fields: [postId], references: [id], onDelete: SetNull)
-  keyword       Keyword?    @relation(fields: [keywordId], references: [id], onDelete: SetNull)
+  weeklyQuota WeeklyQuota @relation(fields: [weeklyQuotaId], references: [id], onDelete: Cascade)
+  post        Post?       @relation(fields: [postId], references: [id], onDelete: SetNull)
+  keyword     Keyword?    @relation(fields: [keywordId], references: [id], onDelete: SetNull)
 
   @@index([weeklyQuotaId, status])
 }
 
 model WeeklyStat {
-  id                String      @id @default(cuid())
-  weeklyQuotaId      String      @unique
-  draftCount         Int         @default(0)
-  reviewCount        Int         @default(0)
-  approvedCount      Int         @default(0)
-  publishedCount     Int         @default(0)
-  pageCount          Int         @default(0)
-  missingDrafts      Int         @default(0)
-  missingPublishes   Int         @default(0)
-  categoryBreakdown  String?
-  lastCalculatedAt   DateTime    @default(now())
+  id                String   @id @default(cuid())
+  weeklyQuotaId     String   @unique
+  draftCount        Int      @default(0)
+  reviewCount       Int      @default(0)
+  approvedCount     Int      @default(0)
+  publishedCount    Int      @default(0)
+  pageCount         Int      @default(0)
+  missingDrafts     Int      @default(0)
+  missingPublishes  Int      @default(0)
+  categoryBreakdown String?
+  lastCalculatedAt  DateTime @default(now())
 
-  weeklyQuota        WeeklyQuota @relation(fields: [weeklyQuotaId], references: [id], onDelete: Cascade)
+  weeklyQuota WeeklyQuota @relation(fields: [weeklyQuotaId], references: [id], onDelete: Cascade)
 }
 
 model Alert {
-  id              String         @id @default(cuid())
-  type            AlertType
-  severity        AlertSeverity
-  status          AlertStatus    @default(OPEN)
-  message         String
-  postId          String?
-  weeklyQuotaId   String?
-  createdAt       DateTime       @default(now())
-  resolvedAt      DateTime?
+  id            String        @id @default(cuid())
+  type          AlertType
+  severity      AlertSeverity
+  status        AlertStatus   @default(OPEN)
+  message       String
+  postId        String?
+  weeklyQuotaId String?
+  createdAt     DateTime      @default(now())
+  resolvedAt    DateTime?
 
-  post            Post?          @relation(fields: [postId], references: [id], onDelete: SetNull)
-  weeklyQuota     WeeklyQuota?   @relation(fields: [weeklyQuotaId], references: [id], onDelete: SetNull)
-  notifications   NotificationLog[]
+  post          Post?             @relation(fields: [postId], references: [id], onDelete: SetNull)
+  weeklyQuota   WeeklyQuota?      @relation(fields: [weeklyQuotaId], references: [id], onDelete: SetNull)
+  notifications NotificationLog[]
 
   @@index([status, severity, createdAt])
 }
 
 model NotificationChannel {
-  id             String                  @id @default(cuid())
-  type           NotificationChannelType
-  target         String
-  isEnabled      Boolean                 @default(true)
-  createdAt      DateTime                @default(now())
-  updatedAt      DateTime                @updatedAt
+  id        String                  @id @default(cuid())
+  type      NotificationChannelType
+  target    String
+  isEnabled Boolean                 @default(true)
+  createdAt DateTime                @default(now())
+  updatedAt DateTime                @updatedAt
 
-  rules          NotificationRule[]
-  logs           NotificationLog[]
+  rules NotificationRule[]
+  logs  NotificationLog[]
 
   @@unique([type, target])
 }
 
 model NotificationRule {
-  id                    String              @id @default(cuid())
-  channelId             String
-  event                 NotificationEvent
-  isEnabled             Boolean             @default(true)
-  sendImmediately       Boolean             @default(true)
-  dailyDigestHour       Int?
-  weeklyDigestIsoDay    Int?
-  createdAt             DateTime            @default(now())
-  updatedAt             DateTime            @updatedAt
+  id                 String            @id @default(cuid())
+  channelId          String
+  event              NotificationEvent
+  isEnabled          Boolean           @default(true)
+  sendImmediately    Boolean           @default(true)
+  dailyDigestHour    Int?
+  weeklyDigestIsoDay Int?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
 
-  channel               NotificationChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  channel NotificationChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
 
   @@unique([channelId, event])
 }
 
 model NotificationLog {
-  id            String              @id @default(cuid())
-  channelId      String
-  alertId        String?
-  event          NotificationEvent
-  subject        String
-  body           String
-  status         NotificationStatus @default(PENDING)
-  sentAt         DateTime?
-  errorMessage   String?
-  createdAt      DateTime           @default(now())
+  id           String             @id @default(cuid())
+  channelId    String
+  alertId      String?
+  event        NotificationEvent
+  subject      String
+  body         String
+  status       NotificationStatus @default(PENDING)
+  sentAt       DateTime?
+  errorMessage String?
+  createdAt    DateTime           @default(now())
 
-  channel        NotificationChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
-  alert          Alert?              @relation(fields: [alertId], references: [id], onDelete: SetNull)
+  channel NotificationChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  alert   Alert?              @relation(fields: [alertId], references: [id], onDelete: SetNull)
 
   @@index([status, createdAt])
 }
 
 model ReviewLog {
   id            String         @id @default(cuid())
-  postId         String
-  decision       ReviewDecision
-  reviewer       String        @default("kimcomplete8888@gmail.com")
-  checklistJson  String?
-  notes          String?
-  createdAt      DateTime      @default(now())
+  postId        String
+  decision      ReviewDecision
+  reviewer      String         @default("kimcomplete8888@gmail.com")
+  checklistJson String?
+  notes         String?
+  createdAt     DateTime       @default(now())
 
-  post           Post          @relation(fields: [postId], references: [id], onDelete: Cascade)
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
 
   @@index([postId, createdAt])
 }
