@@ -86,5 +86,66 @@
 - **대안**: 초안 본문에서 첫 문장 추출 (품질 낮음), 수동 입력 (운영 부담)
 - **결과**: 140-155자 최적 길이로 자동 생성, 키워드 자연 포함
 
+### ADR-009: 수익화 데이터 레이어 확장 및 AdSense 연동
+- **날짜**: 2026-04-16
+- **상태**: 채택
+- **결정**:
+  - `MetricsSnapshot`에 `adImpressions`, `adClicks`, `adCtr`, `revenue`, `rpm`, `ecpm`, `pageRpm`, `periodStart`, `periodEnd`, `source` 필드 추가
+  - `Post`에 `totalRevenue`, `lifetimeImpressions`, `lifetimeClicks`, `lastRevenueAt`, `refreshScore`, `needsRefresh` 추가
+  - `Keyword`에 `estimatedCpc`, `competitionScore`, `estimatedVolume`, `revenueScore` 추가
+  - 신규 모델 `AffiliateLink`, `AffiliateClick`
+  - `AlertType`에 `REVENUE_DROP`, `LOW_RPM_POST`, `REFRESH_CANDIDATE` 추가
+  - `lib/integrations/adsense.ts`: AdSense Management API v2 연동 (refresh token + PAGE_URL 기준 PAGE_VIEWS_RPM/ESTIMATED_EARNINGS 수집)
+- **이유**: 기존 `MetricsSnapshot`은 노출/클릭만 추적하여 실제 수익 지표(RPM, 수익금액) 반영 불가. 수익 기반 의사결정(고수익 카테고리 우선 생산, 저수익 글 리프레시, 제휴 링크 전환 추적)이 설계 당시부터 공백이었음.
+- **대안**:
+  - Google Analytics 4에서만 간접 추정 (정확도 낮음)
+  - 수익 필드 제외하고 운영자가 스프레드시트 병행 관리 (자동화 불가)
+- **결과**:
+  - AdSense 승인 후 자동으로 URL별 수익 동기화 가능
+  - 키워드 생산 우선순위에 수익성 반영 가능 (ADR-010)
+  - 제휴 수익원 다각화 기반 마련
+  - 미승인 상태에서도 `recordManualRevenue`로 수동 입력 가능
+
+### ADR-010: 수익성 기반 키워드 우선순위 재설계
+- **날짜**: 2026-04-16
+- **상태**: 채택
+- **결정**:
+  - `computeKeywordRevenueScore(keyword)` = `priority` × `intentMultiplier` × `cpc` × `(1 - competition)` × `log10(volume + 10)`
+  - intent 가중치: `transactional`=1.6, `commercial`=1.4, `informational`=1.0, `navigational`=0.6
+  - 카테고리별 기본 CPC 프리셋: `MONEY_SAVING`($2.5), `AI_PRODUCTIVITY`($1.8), `DIGITAL_HOWTO`($1.2), `WORK_TIPS`($0.9), 기타($0.7)
+  - 키워드 생성 시 `estimatedCpc` 미입력이면 카테고리 프리셋 자동 적용
+  - 키워드 큐 기본 정렬을 `revenueScore` 내림차순으로 변경
+- **이유**: 현행은 `priority` 1~5 정수만 사용하여 "고수익 저경쟁 키워드"가 "저수익 고경쟁 키워드"보다 뒤로 밀릴 수 있음. AdSense RPM은 키워드 의도/CPC에 크게 좌우되므로 우선순위에 반영 필수.
+- **대안**:
+  - 외부 SEO 도구(Ahrefs, SEMrush) 자동 연동 (비용)
+  - 발행 후 실제 RPM만으로 재학습 (초기 데이터 부족)
+- **결과**: 수동 입력 + 카테고리 프리셋 하이브리드로 초기 운영 가능, 실제 RPM 데이터 축적 후 알고리즘 재조정 여지.
+
+### ADR-011: 제휴 마케팅(Affiliate) 수익원 다각화 도입
+- **날짜**: 2026-04-16
+- **상태**: 채택
+- **결정**:
+  - `AffiliateLink` 모델 (라벨, 머천트, 대상 URL, trackingSlug, 커미션율, 예상 페이아웃, 카테고리, 활성 여부, 집계 카운터)
+  - `AffiliateClick` 모델 (클릭 로그, referer, userAgent, country, 전환 여부, payout)
+  - `/api/affiliate/redirect/[slug]` 라우트: 클릭 집계 후 302 리다이렉트
+  - 로컬 단축 링크는 Blogger 본문에 삽입 가능 형태로 노출
+- **이유**: AdSense 단일 수익원 의존은 정책 위반 1회로 수익 전멸 위험. 제품 리뷰/비교 카테고리는 Affiliate CVR이 AdSense RPM보다 5~10배 높은 경우가 많음.
+- **대안**:
+  - Amazon/쿠팡 단축 링크를 본문에 직접 삽입 (클릭 추적 불가)
+  - 별도 외부 추적 서비스 사용 (비용, 의존성)
+- **결과**: 로컬 DB에서 클릭/전환 로깅, 리다이렉트 후 머천트 URL로 302, 글별 수익 합산 가능.
+
+### ADR-012: 저수익 글 자동 리프레시 추천 로직
+- **날짜**: 2026-04-16
+- **상태**: 채택
+- **결정**:
+  - `refreshScore = w1·(ageDays/30) + w2·(impressions/100) - w3·(revenue*10) - w4·(ctr*100)`
+  - 조건: 발행 30일 경과 + 노출 100회 이상 + 수익 $1 미만 → 리프레시 후보
+  - 후보 글은 `needsRefresh = true` + `REFRESH_CANDIDATE` 알림 발생
+  - 대시보드에서 일괄 조회/상태 변경 가능
+- **이유**: 저수익 글이 지속 누적되면 사이트 전체 품질 신호 약화. 수동 모니터링은 30개 이상부터 병목.
+- **대안**: 모든 글 90일 주기 리프레시 (비효율), 수동 선별 (확장성 부족)
+- **결과**: 자동으로 재작성 후보 풀이 만들어지고, 운영자는 상위 몇 개만 실행하면 됨.
+
 ---
 <!-- 새로운 ADR은 이 아래에 추가 -->

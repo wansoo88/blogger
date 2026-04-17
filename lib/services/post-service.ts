@@ -313,4 +313,7 @@ export async function touchPaths() {
   revalidatePath('/dashboard/progress')
   revalidatePath('/dashboard/monitor')
   revalidatePath('/dashboard/playbook')
+  revalidatePath('/dashboard/revenue')
+  revalidatePath('/dashboard/affiliate')
+  revalidatePath('/dashboard/refresh')
 }

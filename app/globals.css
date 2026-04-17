@@ -160,7 +160,34 @@ h3 {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.nav-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
   margin-top: 22px;
+}
+
+.nav-group {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.nav-group-label {
+  display: inline-flex;
+  align-items: center;
+  min-width: 62px;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  background: rgba(15, 118, 110, 0.04);
+  border-radius: 999px;
+  letter-spacing: 0.3px;
 }
 
 .nav-pill {
